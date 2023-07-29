@@ -66,6 +66,7 @@ pthread_mutex_t mlock_print;
 sem_t chair_semaphore;
 
 int students_helped = 0; // New counter to track the number of students helped
+int students_left = 0;
 
 int main()
 {
@@ -104,6 +105,8 @@ int main()
         pthread_create(&s->student_id, &student_attr, student_init, s);
         all_students[i] = s;
     }
+    sleep(25);
+    printf("students that left: %i\n", students_left);
     pthread_join(teacher.tid, NULL);
 }
 
@@ -135,7 +138,7 @@ void *ta_init(void *teachr)
         pthread_mutex_unlock(&mlock_exit); // unlocked in student_init()
         pthread_cond_broadcast(&cond_student);
         pthread_join(chairs[0].student->student_id, NULL); // wait for the student to leave
-        printf("Student %i exited\n", chairs[0].student->number);
+        // printf("Student %i exited\n", chairs[0].student->number);
         if (students_helped == STUDENT_NUM)
         {
             break;
@@ -163,10 +166,12 @@ void *student_init(void *stu)
             s->status = PROGRAMMING;
             // sem_post(&chair_semaphore);
             int random_number = rand() % 3 + 1;
+            // printf("Student %i will come back later\n", s->number);
             sleep(random_number);
         }
         else
         {
+            // printf("Student %i sits\n", s->number);
             break; // the student is now sitting
         }
 
@@ -182,9 +187,12 @@ void *student_init(void *stu)
     {
         pthread_cond_wait(&cond_student, &mlock_exit); // wait until a signal comes to exit
     }
+
     vacate_chair(0);
-    pthread_mutex_unlock(&lock_chairs); // lock was acquired by TA_init
+    printf("Student %i left\n", s->number);
+    students_left++;
     pthread_mutex_unlock(&mlock_exit);  // lock was acquired by TA_init
+    pthread_mutex_unlock(&lock_chairs); // lock was acquired by TA_init
     pthread_exit(NULL);
 }
 
@@ -193,14 +201,14 @@ void vacate_chair(int8_t chair_id)
 {
     // signal thread to exit
 
-    chairs[chair_id].status = UNOCCUPIED;
+    // chairs[chair_id].status = UNOCCUPIED;
     chairs[chair_id].student->status = UNINITIALIZED;
     // sem_post(&chair_semaphore);
 
     // move next student to chairs[0] ensuring fairness --FIFO
     for (size_t i = 1; i < CHAIR_NUM; i++)
     {
-        if (chairs[i].status != UNOCCUPIED && chairs[i - 1].status != UNOCCUPIED) // two consecutive uninitialized students means that there are no more left
+        if (chairs[i].status == OCCUPIED && (i - 1) < CHAIR_NUM - 1) // two consecutive uninitialized students means that there are no more left
         {
             chairs[i - 1] = chairs[i];
         }
@@ -209,6 +217,7 @@ void vacate_chair(int8_t chair_id)
             break;
         }
     }
+    chairs[CHAIR_NUM - 1].status = UNOCCUPIED;
 }
 
 // returns the id of the last empty chair
