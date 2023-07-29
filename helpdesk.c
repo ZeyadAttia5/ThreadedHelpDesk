@@ -105,9 +105,8 @@ int main()
         pthread_create(&s->student_id, &student_attr, student_init, s);
         all_students[i] = s;
     }
-    sleep(25);
-    printf("students that left: %i\n", students_left);
     pthread_join(teacher.tid, NULL);
+    printf("Helped %i students\n", students_helped);
 }
 
 void *ta_init(void *teachr)
@@ -125,7 +124,7 @@ void *ta_init(void *teachr)
         Student *s = chairs[0].student;
 
         teacher->status = HELPING;
-        int random_number = rand() % 3 + 1;
+        int random_number = rand() % 1 + 1;
         sleep(random_number);                         // help the Student
         pthread_mutex_unlock(&mlock_student_arrived); // was locked from the sit()
         pthread_mutex_lock(&lock_chairs);             // released in the student_init
@@ -143,9 +142,6 @@ void *ta_init(void *teachr)
         {
             break;
         }
-        // else{
-        //     printf("Helped %i students\n", students_helped);
-        // }
     }
     return NULL;
 }
@@ -165,13 +161,13 @@ void *student_init(void *stu)
             // come back later
             s->status = PROGRAMMING;
             // sem_post(&chair_semaphore);
-            int random_number = rand() % 3 + 1;
-            // printf("Student %i will come back later\n", s->number);
+            int random_number = rand() % 2 + 1;
+            printf("Student %i will come back later\n", s->number);
             sleep(random_number);
         }
         else
         {
-            // printf("Student %i sits\n", s->number);
+            printf("Student %i sits\n", s->number);
             break; // the student is now sitting
         }
 
@@ -189,7 +185,7 @@ void *student_init(void *stu)
     }
 
     vacate_chair(0);
-    printf("Student %i left\n", s->number);
+    printf("Student %i is leaving\n", s->number);
     students_left++;
     pthread_mutex_unlock(&mlock_exit);  // lock was acquired by TA_init
     pthread_mutex_unlock(&lock_chairs); // lock was acquired by TA_init
