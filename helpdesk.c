@@ -56,16 +56,15 @@ int8_t exit_flag = -1;
 pthread_mutex_t mlock_exit;
 pthread_cond_t cond_student;
 
-pthread_cond_t is_student;
-pthread_mutex_t lock_chairs;
+pthread_cond_t cond_student_arrived;
+pthread_mutex_t mlock_student_arrived;
 
-pthread_mutex_t mstudent_lock;
+pthread_mutex_t lock_chairs;
 
 pthread_mutex_t mlock_print;
 
 sem_t chair_semaphore;
 
-uint8_t ta_exit = 0;
 int students_helped = 0; // New counter to track the number of students helped
 
 int main()
@@ -74,8 +73,12 @@ int main()
     sem_init(&chair_semaphore, 0, CHAIR_NUM);
     pthread_mutex_init(&lock_chairs, NULL);
     pthread_mutex_init(&mlock_print, NULL);
-    pthread_cond_init(&is_student, NULL);
+
+    pthread_mutex_init(&mlock_exit, NULL);
     pthread_cond_init(&cond_student, NULL);
+
+    pthread_cond_init(&cond_student_arrived, NULL);
+    pthread_mutex_init(&mlock_student_arrived, NULL);
 
     srand((unsigned int)time(NULL));
 
@@ -87,21 +90,20 @@ int main()
     teacher.tid = ta;
     teacher.status = SLEEPING;
     pthread_create(&teacher.tid, &ta_attr, ta_init, &teacher);
-    Student * all_students[STUDENT_NUM];
+    Student *all_students[STUDENT_NUM];
 
     for (size_t i = 0; i < STUDENT_NUM; i++)
     {
         pthread_attr_t student_attr;
         pthread_t student_id;
         pthread_attr_init(&student_attr);
-        Student *s = (Student *) malloc(sizeof(Student));
+        Student *s = (Student *)malloc(sizeof(Student));
         s->number = i;
         s->student_id = student_id;
         s->status = PROGRAMMING;
         pthread_create(&s->student_id, &student_attr, student_init, s);
         all_students[i] = s;
     }
-    ta_exit = 1;
     pthread_join(teacher.tid, NULL);
 }
 
@@ -110,31 +112,36 @@ void *ta_init(void *teachr)
     TA *teacher = (TA *)teachr;
     while (1)
     {
+        pthread_mutex_lock(&mlock_student_arrived);
         while (chairs[0].status == UNOCCUPIED)
         {
             teacher->status = SLEEPING;
-            pthread_cond_wait(&is_student, &lock_chairs); // wait until a student comes and signals
+            pthread_cond_wait(&cond_student_arrived, &mlock_student_arrived); // wait until a student comes and signals
         }
 
         Student *s = chairs[0].student;
-        pthread_mutex_unlock(&lock_chairs); // was lockedfrom the sit()
 
         teacher->status = HELPING;
         int random_number = rand() % 3 + 1;
-        sleep(random_number);             // help the Student
-        pthread_mutex_lock(&lock_chairs); // released in the student_init
+        sleep(random_number);                         // help the Student
+        pthread_mutex_unlock(&mlock_student_arrived); // was locked from the sit()
+        pthread_mutex_lock(&lock_chairs);             // released in the student_init
+
         // signal thread to exit
         pthread_mutex_lock(&mlock_exit); // unlocked in student_init()
         exit_flag = s->number;
         teacher->status = SLEEPING;
-        students_helped++; // Increment the students_helped counter
-        printf("student %i will be signaled with %i\n", s->number, exit_flag);
-        pthread_cond_signal(&cond_student);
+        students_helped++;                 // Increment the students_helped counter
+        pthread_mutex_unlock(&mlock_exit); // unlocked in student_init()
+        pthread_cond_broadcast(&cond_student);
         pthread_join(chairs[0].student->student_id, NULL); // wait for the student to leave
         printf("Student %i exited\n", chairs[0].student->number);
-        // if (ta_exit == 1 && students_helped == STUDENT_NUM)
-        // {
-        //     break;
+        if (students_helped == STUDENT_NUM)
+        {
+            break;
+        }
+        // else{
+        //     printf("Helped %i students\n", students_helped);
         // }
     }
     return NULL;
@@ -145,9 +152,6 @@ void *student_init(void *stu)
     Student *s = (Student *)stu;
     int random_number = rand() % 3 + 1;
     sleep(random_number); // program for some period of time
-    pthread_mutex_lock(&mlock_print);
-    printf("student %i is programming\n", s->number);
-    pthread_mutex_unlock(&mlock_print);
 
     do
     {
@@ -168,13 +172,16 @@ void *student_init(void *stu)
 
     } while (1);
 
-    pthread_mutex_lock(&lock_chairs); // released in ta_init
-    pthread_cond_signal(&is_student); // wake up the teacher
-    while (s->number != exit_flag)    // while the number was not signaled, wait
+    if (chairs[0].student->number == s->number)
     {
-        pthread_cond_wait(&cond_student, &lock_chairs); // wait until a signal comes to exit
+        pthread_cond_signal(&cond_student_arrived); // wake up the teacher
     }
-    printf("Student %i is awakened %i\n", s->number);
+
+    pthread_mutex_lock(&mlock_exit); // lock was acquired by TA_init
+    while (s->number != exit_flag)   // while the number was not signaled, wait
+    {
+        pthread_cond_wait(&cond_student, &mlock_exit); // wait until a signal comes to exit
+    }
     vacate_chair(0);
     pthread_mutex_unlock(&lock_chairs); // lock was acquired by TA_init
     pthread_mutex_unlock(&mlock_exit);  // lock was acquired by TA_init
