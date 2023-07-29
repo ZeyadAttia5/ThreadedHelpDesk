@@ -98,13 +98,14 @@ int main()
         s.number = i;
         s.student_id = student_id;
         s.status = PROGRAMMING;
-        all_students[i] = s;
         pthread_create(&s.student_id, &student_attr, student_init, &s);
+        all_students[i] = s;
     }
+
     for (size_t i = 0; i < STUDENT_NUM; i++)
     {
         pthread_join(all_students[i].student_id, NULL);
-        printf("Student %i exited\n", all_students[i].number);
+        printf("Student %li exited\n", all_students[0].student_id);
     }
     ta_exit = 1;
     pthread_join(teacher.tid, NULL);
