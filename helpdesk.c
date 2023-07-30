@@ -59,11 +59,7 @@ pthread_cond_t cond_student;
 pthread_cond_t cond_student_arrived;
 pthread_mutex_t mlock_student_arrived;
 
-pthread_mutex_t lock_chairs;
-
-pthread_mutex_t mlock_print;
-
-sem_t chair_semaphore;
+pthread_mutex_t mlock_chairs;
 
 int students_helped = 0; // New counter to track the number of students helped
 int students_left = 0;
@@ -71,9 +67,7 @@ int students_left = 0;
 int main()
 {
 
-    sem_init(&chair_semaphore, 0, CHAIR_NUM);
-    pthread_mutex_init(&lock_chairs, NULL);
-    pthread_mutex_init(&mlock_print, NULL);
+    pthread_mutex_init(&mlock_chairs, NULL);
 
     pthread_mutex_init(&mlock_exit, NULL);
     pthread_cond_init(&cond_student, NULL);
@@ -106,6 +100,21 @@ int main()
         all_students[i] = s;
     }
     pthread_join(teacher.tid, NULL);
+
+    // free students' memory
+    for (size_t i = 0; i < STUDENT_NUM; i++)
+    {
+        free(all_students[i]);
+    }
+
+    // destroy
+    pthread_mutex_destroy(&mlock_exit);
+    pthread_mutex_destroy(&mlock_student_arrived);
+    pthread_mutex_destroy(&mlock_chairs);
+
+    pthread_cond_destroy(&cond_student);
+    pthread_cond_destroy(&cond_student_arrived);
+
     printf("Helped %i students\n", students_helped);
 }
 
@@ -127,7 +136,7 @@ void *ta_init(void *teachr)
         int random_number = rand() % 1 + 1;
         sleep(random_number);                         // help the Student
         pthread_mutex_unlock(&mlock_student_arrived); // was locked from the sit()
-        pthread_mutex_lock(&lock_chairs);             // released in the student_init
+        pthread_mutex_lock(&mlock_chairs);            // released in the student_init
 
         // signal thread to exit
         pthread_mutex_lock(&mlock_exit); // unlocked in student_init()
@@ -187,8 +196,8 @@ void *student_init(void *stu)
     vacate_chair(0);
     printf("Student %i is leaving\n", s->number);
     students_left++;
-    pthread_mutex_unlock(&mlock_exit);  // lock was acquired by TA_init
-    pthread_mutex_unlock(&lock_chairs); // lock was acquired by TA_init
+    pthread_mutex_unlock(&mlock_exit);   // lock was acquired by TA_init
+    pthread_mutex_unlock(&mlock_chairs); // lock was acquired by TA_init
     pthread_exit(NULL);
 }
 
@@ -234,7 +243,7 @@ int8_t last_empty_chair()
 int8_t sit(Student *s)
 {
     // use mutex or semaphore lock to edit the chairs array
-    pthread_mutex_lock(&lock_chairs); // released in the ta_init
+    pthread_mutex_lock(&mlock_chairs); // released in the ta_init
     int8_t chair_id = last_empty_chair();
 
     if (chair_id != -1)
@@ -243,6 +252,6 @@ int8_t sit(Student *s)
         s->status = SITTING;
         chairs[chair_id].status = OCCUPIED;
     }
-    pthread_mutex_unlock(&lock_chairs);
+    pthread_mutex_unlock(&mlock_chairs);
     return chair_id; // indicating success
 }
